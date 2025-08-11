@@ -18,6 +18,7 @@ def compute_v(
     layer: int,
     left_vector: torch.Tensor,
     context_templates: List[str],
+    use_modified: bool = False,
 ) -> torch.Tensor:
     """
     Computes the value (right) vector for the rank-1 update.
@@ -86,6 +87,27 @@ def compute_v(
     delta = torch.zeros((hidden_dim,), requires_grad=True, device="cuda")
     target_init, kl_distr_init = None, None
 
+    # Optional SAE-based modified behavior
+    if use_modified:
+        import torch.nn.functional as F
+        from rome.sae_paths import get_sae_path
+        try:
+            from dictionary_learning.utils import load_dictionary
+        except Exception:
+            load_dictionary = None
+        device = (
+            "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        if load_dictionary is None:
+            raise ImportError("dictionary_learning.utils.load_dictionary not found but use_modified=True")
+        sae_path = get_sae_path(model.config._name_or_path, layer)
+        sae_original, _, _ = load_dictionary(sae_path, device)
+        sae_modified, _, _ = load_dictionary(
+            sae_path, device, division_factor=getattr(hparams, "v_division_factor", 1.0)
+        )
+        sae = sae_original
+        do_clamp_relu = True
+
     # Inserts new "delta" variable at the appropriate part of the computation
     def edit_output_fn(cur_out, cur_layer):
         nonlocal target_init
@@ -95,12 +117,47 @@ def compute_v(
                 print("Recording initial value of v*")
                 # Initial value is recorded for the clean sentence
                 target_init = cur_out[0, lookup_idxs[0]].detach().clone()
-                
-            for i, idx in enumerate(lookup_idxs):
-                if len(lookup_idxs)!=len(cur_out):
-                    cur_out[idx, i, :] += delta
+
+            if not use_modified:
+                for i, idx in enumerate(lookup_idxs):
+                    if len(lookup_idxs)!=len(cur_out):
+                        cur_out[idx, i, :] += delta
+                    else:
+                        cur_out[i, idx, :] += delta
+            else:
+                batch_size = len(lookup_idxs)
+                # Encode delta into feature space and broadcast to batch
+                delta_features = sae_modified.encode(delta.unsqueeze(0)).expand(batch_size, -1)
+
+                # Gather residual vectors at lookup positions (handle layout)
+                if len(lookup_idxs) != len(cur_out):
+                    residual_vectors = torch.stack(
+                        [cur_out[idx, i, :].clone() for i, idx in enumerate(lookup_idxs)], dim=0
+                    )
                 else:
-                    cur_out[i, idx, :] += delta
+                    residual_vectors = torch.stack(
+                        [cur_out[i, idx, :].clone() for i, idx in enumerate(lookup_idxs)], dim=0
+                    )
+
+                # Encode current vectors, apply delta in feature space, optional clamp, decode + residual correction
+                feature_acts = sae.encode(residual_vectors).detach()
+                new_feature_acts = feature_acts + delta_features
+                if do_clamp_relu:
+                    new_feature_acts = F.relu(new_feature_acts)
+
+                feature_acts_init = sae.encode(target_init.unsqueeze(0)).detach()
+                sae_out_init = sae.decode(feature_acts_init).detach()
+                diff = (target_init - sae_out_init).detach()
+
+                sae_out = sae.decode(new_feature_acts) + diff
+
+                # Write back
+                if len(lookup_idxs) != len(cur_out):
+                    for i, idx in enumerate(lookup_idxs):
+                        cur_out[idx, i, :] = sae_out[i]
+                else:
+                    for i, idx in enumerate(lookup_idxs):
+                        cur_out[i, idx, :] = sae_out[i]
 
         return cur_out
 
@@ -125,17 +182,18 @@ def compute_v(
         ) as tr:
             logits = model(**input_tok).logits
 
-            # Compute distribution for KL divergence
-            kl_logits = torch.stack(
-                [
-                    logits[i - len(kl_prompts), idx, :]
-                    for i, idx in enumerate(lookup_idxs[-len(kl_prompts) :])
-                ],
-                dim=0,
-            )
-            kl_log_probs = torch.nn.functional.log_softmax(kl_logits, dim=1)
-            if kl_distr_init is None:
-                kl_distr_init = kl_log_probs.detach().clone()
+            if not use_modified:
+                # Compute distribution for KL divergence
+                kl_logits = torch.stack(
+                    [
+                        logits[i - len(kl_prompts), idx, :]
+                        for i, idx in enumerate(lookup_idxs[-len(kl_prompts) :])
+                    ],
+                    dim=0,
+                )
+                kl_log_probs = torch.nn.functional.log_softmax(kl_logits, dim=1)
+                if kl_distr_init is None:
+                    kl_distr_init = kl_log_probs.detach().clone()
 
         # Compute loss on rewriting targets
         log_probs = torch.log_softmax(logits, dim=2)
@@ -150,14 +208,24 @@ def compute_v(
         # Aggregate total losses
         nll_loss_each = -(loss * mask).sum(1) / target_ids.size(0)
         nll_loss = nll_loss_each.mean()
-        kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
-            kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
-        )
+        if not use_modified:
+            kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
+                kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
+            )
+        else:
+            kl_loss = torch.zeros((), device=nll_loss.device)
         weight_decay = hparams.v_weight_decay * (
             torch.norm(delta) / torch.norm(target_init) ** 2
         )
-        # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
-        loss = nll_loss + kl_loss + weight_decay
+        # Add L1 sparsity term on delta features for modified mode
+        if use_modified:
+            # Reuse delta_features from last forward by re-encoding here safely
+            delta_features_for_loss = sae_modified.encode(delta.unsqueeze(0))
+            l1_loss = delta_features_for_loss.norm(p=1)
+            alpha = float(getattr(hparams, "v_alpha", 0.0))
+            loss = nll_loss + weight_decay + alpha * l1_loss
+        else:
+            loss = nll_loss + kl_loss + weight_decay
         print(
             f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
             f"avg prob of [{request['target_new']}] "

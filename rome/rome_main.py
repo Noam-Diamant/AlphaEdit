@@ -24,6 +24,7 @@ def apply_rome_to_model(
     copy=False,
     return_orig_weights=False,
     keep_original_weight=False,
+    use_modified: bool = False,
     **kwargs
 ) -> Tuple[AutoModelForCausalLM, List[str]]:
     """
@@ -40,7 +41,7 @@ def apply_rome_to_model(
 
     weights_copy = {}
 
-    deltas = execute_rome(model, tok, request, hparams)
+    deltas = execute_rome(model, tok, request, hparams, use_modified=use_modified)
 
     with torch.no_grad():
         for w_name, (delta_u, delta_v) in deltas.items():
@@ -63,6 +64,7 @@ def execute_rome(
     tok: AutoTokenizer,
     request: Dict,
     hparams: ROMEHyperParams,
+    use_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the ROME update algorithm for the specified update at the specified layer
@@ -117,6 +119,7 @@ def execute_rome(
             layer,
             left_vector,
             get_context_templates(model, tok, hparams.context_template_length_params),
+            use_modified=use_modified,
         )
         print("Right vector shape:", right_vector.shape)
 

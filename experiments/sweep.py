@@ -24,6 +24,7 @@ def exec_sweep(
     generation_test_interval: bool,
     num_edits: int,
     use_cache: bool,
+    use_modified: bool,
 ):
     # Configure hparams
     with open(HPARAMS_DIR / alg_name / hparams_fname, "r") as f:
@@ -62,6 +63,7 @@ def exec_sweep(
             dir_name=sweep_dir / f"{num_edits}_edits_setting_{s_i}",
             num_edits=num_edits,
             use_cache=use_cache,
+            use_modified=use_modified,
         )
 
         # Clean up
@@ -125,6 +127,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Use cached k/v pairs (MEMIT and ROME only)",
     )
+    parser.add_argument(
+        "--use_modified",
+        action="store_true",
+        help="Enable modified SAE-based behavior for compute_v/compute_z paths",
+    )
 
     args = parser.parse_args()
     assert args.sweep_dir is not None, f"Must specify a sweep_dir."
@@ -159,4 +166,5 @@ if __name__ == "__main__":
             args.generation_test_interval,
             cur_num_edits,
             args.use_cache,
+            args.use_modified,
         )

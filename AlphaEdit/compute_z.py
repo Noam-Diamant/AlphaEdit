@@ -17,6 +17,7 @@ def compute_z(
     hparams: AlphaEditHyperParams,
     layer: int,
     context_templates: List[str],
+    use_modified: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Computes the value (right) vector for the rank-1 update.
@@ -93,6 +94,27 @@ def compute_z(
     delta = torch.zeros((hidden_dim,), requires_grad=True, device="cuda")
     target_init, kl_distr_init = None, None
 
+    # Optional SAE-based modified behavior
+    if use_modified:
+        import torch.nn.functional as F
+        from rome.sae_paths import get_sae_path
+        try:
+            from dictionary_learning.utils import load_dictionary
+        except Exception:
+            load_dictionary = None
+        device = (
+            "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        if load_dictionary is None:
+            raise ImportError("dictionary_learning.utils.load_dictionary not found but use_modified=True")
+        sae_path = get_sae_path(model.config._name_or_path, layer)
+        sae_original, _, _ = load_dictionary(sae_path, device)
+        sae_modified, _, _ = load_dictionary(
+            sae_path, device, division_factor=getattr(hparams, "v_division_factor", 1.0)
+        )
+        sae = sae_original
+        do_clamp_relu = True
+
     # Inserts new "delta" variable at the appropriate part of the computation
     def edit_output_fn(cur_out, cur_layer):
         nonlocal target_init
@@ -104,13 +126,42 @@ def compute_z(
                 # Initial value is recorded for the clean sentence
                 target_init = cur_out[0][0, lookup_idxs[0]].detach().clone()
 
-            # Add intervened delta
-            for i, idx in enumerate(lookup_idxs):
+            if not use_modified:
+                for i, idx in enumerate(lookup_idxs):
+                    if len(lookup_idxs)!=len(cur_out[0]):
+                        cur_out[0][idx, i, :] += delta
+                    else:
+                        cur_out[0][i, idx, :] += delta
+            else:
+                batch_size = len(lookup_idxs)
+                delta_features = sae_modified.encode(delta.unsqueeze(0)).expand(batch_size, -1)
 
-                if len(lookup_idxs)!=len(cur_out[0]):
-                    cur_out[0][idx, i, :] += delta
+                if len(lookup_idxs) != len(cur_out[0]):
+                    residual_vectors = torch.stack(
+                        [cur_out[0][idx, i, :].clone() for i, idx in enumerate(lookup_idxs)], dim=0
+                    )
                 else:
-                    cur_out[0][i, idx, :] += delta
+                    residual_vectors = torch.stack(
+                        [cur_out[0][i, idx, :].clone() for i, idx in enumerate(lookup_idxs)], dim=0
+                    )
+
+                feature_acts = sae.encode(residual_vectors).detach()
+                new_feature_acts = feature_acts + delta_features
+                if do_clamp_relu:
+                    new_feature_acts = F.relu(new_feature_acts)
+
+                feature_acts_init = sae.encode(target_init.unsqueeze(0)).detach()
+                sae_out_init = sae.decode(feature_acts_init).detach()
+                diff = (target_init - sae_out_init).detach()
+
+                sae_out = sae.decode(new_feature_acts) + diff
+
+                if len(lookup_idxs) != len(cur_out[0]):
+                    for i, idx in enumerate(lookup_idxs):
+                        cur_out[0][idx, i, :] = sae_out[i]
+                else:
+                    for i, idx in enumerate(lookup_idxs):
+                        cur_out[0][i, idx, :] = sae_out[i]
 
         return cur_out
 

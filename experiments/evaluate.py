@@ -69,6 +69,7 @@ def main(
     dir_name: str,
     num_edits: int = 1,
     use_cache: bool = False,
+    use_modified: bool = False,
 ):
     # Set algorithm-specific variables
     params_class, apply_algo = ALG_DICT[alg_name]
@@ -283,6 +284,9 @@ def main(
             else dict()
         )
         etc_args = dict(cache_template=cache_template) if any(alg in alg_name for alg in ["ROME", "MEMIT","AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"]) else dict()
+        # propagate use_modified for algorithms that support it
+        if alg_name in ["ROME", "AlphaEdit", "MEMIT", "MEMIT_prune", "MEMIT_seq", "NSE"]:
+            etc_args.update(dict(use_modified=use_modified))
         seq_args = dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]) else dict()
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit"]) else dict()
         if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
@@ -582,6 +586,11 @@ if __name__ == "__main__":
         help="If we want to do sequential editing or not",
     )
     parser.set_defaults(skip_generation_tests=False, conserve_memory=False)
+    parser.add_argument(
+        "--use_modified",
+        action="store_true",
+        help="Enable modified SAE-based behavior for compute_v/compute_z paths",
+    )
     args = parser.parse_args()
 
     main(
@@ -597,4 +606,5 @@ if __name__ == "__main__":
         dir_name=args.alg_name,
         num_edits=args.num_edits,
         use_cache=args.use_cache,
+        use_modified=args.use_modified,
     )

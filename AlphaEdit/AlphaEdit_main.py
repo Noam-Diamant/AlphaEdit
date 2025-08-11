@@ -27,6 +27,7 @@ def apply_AlphaEdit_to_model(
     cache_template: Optional[str] = None,
     cache_c = None,
     P = None,
+    use_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -89,6 +90,7 @@ def apply_AlphaEdit_to_model(
                 hparams,
                 z_layer,
                 context_templates,
+                use_modified=use_modified,
             )
 
             z_list.append(cur_z)

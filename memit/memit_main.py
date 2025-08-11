@@ -29,6 +29,7 @@ def apply_memit_to_model(
     copy=False,
     return_orig_weights=False,
     cache_template: Optional[str] = None,
+    use_modified: bool = False,
 ) -> Tuple[AutoModelForCausalLM, Dict[str, Any]]:
     """
     Returns a model with the desired changes.
@@ -41,7 +42,9 @@ def apply_memit_to_model(
     if copy:
         model = deepcopy(model)
 
-    deltas = execute_memit(model, tok, requests, hparams, cache_template=cache_template)
+    deltas = execute_memit(
+        model, tok, requests, hparams, cache_template=cache_template, use_modified=use_modified
+    )
 
     with torch.no_grad():
         for w_name, (key_mat, val_mat) in deltas.items():
@@ -66,6 +69,7 @@ def execute_memit(
     requests: List[Dict],
     hparams: MEMITHyperParams,
     cache_template: Optional[str] = None,
+    use_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -133,6 +137,7 @@ def execute_memit(
                 hparams,
                 z_layer,
                 context_templates,
+                use_modified=use_modified,
             )
 
             z_list.append(cur_z)
