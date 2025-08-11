@@ -80,12 +80,16 @@ def compute_z(
     # Set up an optimization over a latent vector that, when output at the
     # rewrite layer, i.e. hypothesized fact lookup location, will induce the
     # target token to be predicted at the final layer.
-    if hasattr(model.config, 'n_embd'):
-        delta = torch.zeros((model.config.n_embd,), requires_grad=True, device="cuda")
-    elif hasattr(model.config, 'hidden_size'):
-        delta = torch.zeros((model.config.hidden_size,), requires_grad=True, device="cuda")
+    # Hidden size handling compatible with Qwen, LLaMA, GPT families
+    if hasattr(model.config, 'n_embd') and isinstance(getattr(model.config, 'n_embd'), int):
+        hidden_dim = int(getattr(model.config, 'n_embd'))
+    elif hasattr(model.config, 'hidden_size') and isinstance(getattr(model.config, 'hidden_size'), int):
+        hidden_dim = int(getattr(model.config, 'hidden_size'))
     else:
-        raise NotImplementedError
+        layer_module = nethook.get_module(model, hparams.layer_module_tmp.format(layer))
+        sample_param = next(layer_module.parameters())
+        hidden_dim = sample_param.shape[-1]
+    delta = torch.zeros((hidden_dim,), requires_grad=True, device="cuda")
     target_init, kl_distr_init = None, None
 
     # Inserts new "delta" variable at the appropriate part of the computation
@@ -163,7 +167,7 @@ def compute_z(
             kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
         )
         weight_decay = hparams.v_weight_decay * (
-            torch.norm(delta) / torch.norm(target_init) ** 2
+            torch.norm(delta) / torch.norm(target_init)** 2
         )
         # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
         loss = nll_loss + kl_loss.to(nll_loss.device) + weight_decay.to(nll_loss.device)

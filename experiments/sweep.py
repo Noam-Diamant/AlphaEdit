@@ -129,9 +129,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     assert args.sweep_dir is not None, f"Must specify a sweep_dir."
 
-    model = AutoModelForCausalLM.from_pretrained(args.model_name).to("cuda")
-    tok = AutoTokenizer.from_pretrained(args.model_name)
+    is_qwen = "Qwen" in args.model_name
+    model = AutoModelForCausalLM.from_pretrained(args.model_name, trust_remote_code=True if is_qwen else None).to("cuda")
+    tok = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True if is_qwen else None)
     tok.pad_token = tok.eos_token
+    if is_qwen:
+        if hasattr(model.config, "max_position_embeddings"):
+            model.config.n_positions = getattr(model.config, "max_position_embeddings")
+        if hasattr(model.config, "hidden_size"):
+            model.config.n_embd = getattr(model.config, "hidden_size")
 
     for cur_num_edits in list(map(int, args.num_edits.split(","))):
         torch.cuda.empty_cache()

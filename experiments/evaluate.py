@@ -115,9 +115,19 @@ def main(
     # Instantiate vanilla model
     if type(model_name) is str:
         print("Instantiating model")
-        model = AutoModelForCausalLM.from_pretrained(model_name).cuda()
-        tok = AutoTokenizer.from_pretrained(model_name)
+        is_qwen = "Qwen" in model_name
+        if is_qwen:
+            model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True).cuda()
+        else:
+            model = AutoModelForCausalLM.from_pretrained(model_name).cuda()
+        tok = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True if is_qwen else None)
         tok.pad_token = tok.eos_token
+        # Qwen models sometimes require explicit config compatibility
+        if is_qwen:
+            if hasattr(model.config, "max_position_embeddings"):
+                model.config.n_positions = getattr(model.config, "max_position_embeddings")
+            if hasattr(model.config, "hidden_size"):
+                model.config.n_embd = getattr(model.config, "hidden_size")
     else:
         model, tok = model_name
         model_name = model.config._name_or_path
@@ -132,6 +142,32 @@ def main(
 
     ds_class, ds_eval_method = DS_DICT[ds_name]
     ds = ds_class(DATA_DIR, tok=tok, size=dataset_size_limit)
+
+    # Override module templates for Qwen models if needed
+    try:
+        base_name = model.config._name_or_path
+    except Exception:
+        base_name = str(model_name)
+    if "Qwen" in base_name:
+        # Set correct module template strings for Qwen family
+        if hasattr(hparams, "rewrite_module_tmp"):
+            hparams.rewrite_module_tmp = "model.layers.{}.mlp.down_proj"
+        if hasattr(hparams, "layer_module_tmp"):
+            hparams.layer_module_tmp = "model.layers.{}"
+        if hasattr(hparams, "mlp_module_tmp"):
+            hparams.mlp_module_tmp = "model.layers.{}.mlp"
+        if hasattr(hparams, "attn_module_tmp"):
+            hparams.attn_module_tmp = "model.layers.{}.self_attn"
+        if hasattr(hparams, "ln_f_module"):
+            hparams.ln_f_module = "model.norm"
+        if hasattr(hparams, "lm_head_module"):
+            hparams.lm_head_module = "lm_head"
+        # Ensure loss layer index is within range
+        if hasattr(model.config, "num_hidden_layers") and hasattr(hparams, "v_loss_layer"):
+            try:
+                hparams.v_loss_layer = min(int(hparams.v_loss_layer), int(model.config.num_hidden_layers) - 1)
+            except Exception:
+                pass
     # Get cache templates
     cache_template = None
     if use_cache:
@@ -194,15 +230,18 @@ def main(
     if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"]):
         # Iterate through dataset
         W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
-        if hparams.model_name == "gpt2-xl":
-            cache_c = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
-            print(f"cache_c shape: {cache_c.shape}, W_out shape: {W_out.shape}")
-            if alg_name == "AlphaEdit":
-                P = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
-        elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
-            cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
-            if alg_name == "AlphaEdit":
-                P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
+        base_name = (model.config._name_or_path if hasattr(model, "config") else str(model_name)).replace("/", "_")
+        is_qwen = "Qwen" in base_name
+        # Determine feature dimension based on weight layout
+        # GPT-2 uses Conv1D with transposed layout, so use shape[0].
+        # Standard Linear (GPT-J/Llama/Qwen) uses [out, in], and the input to down_proj/c_proj
+        # resides in shape[1].
+        use_dim = 0 if ("gpt2" in base_name) else 1
+        feat_dim = W_out.shape[use_dim]
+        cache_c = torch.zeros((len(hparams.layers), feat_dim, feat_dim), device="cpu")
+        print(f"cache_c shape: {cache_c.shape}, W_out shape: {W_out.shape}")
+        if alg_name == "AlphaEdit":
+            P = torch.zeros((len(hparams.layers), feat_dim, feat_dim), device="cpu")
         del W_out
     if alg_name == "AlphaEdit":
         for i, layer in enumerate(hparams.layers):
