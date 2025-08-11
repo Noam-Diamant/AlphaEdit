@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+#os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import json
 import shutil
 from itertools import islice
@@ -196,6 +196,7 @@ def main(
         W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
         if hparams.model_name == "gpt2-xl":
             cache_c = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
+            print(f"cache_c shape: {cache_c.shape}, W_out shape: {W_out.shape}")
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
         elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:

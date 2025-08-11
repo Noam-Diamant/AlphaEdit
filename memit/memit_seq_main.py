@@ -42,7 +42,7 @@ def apply_memit_seq_to_model(
     if copy:
         model = deepcopy(model)
 
-    deltas, cache_c = execute_memit(model, tok, requests, hparams, cache_template=cache_template)
+    deltas, cache_c = execute_memit(model, tok, requests, hparams, cache_template=cache_template, cache_c=cache_c)
 
     with torch.no_grad():
         for w_name, (key_mat, val_mat) in deltas.items():
