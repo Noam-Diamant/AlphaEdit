@@ -25,6 +25,7 @@ def exec_sweep(
     num_edits: int,
     use_cache: bool,
     use_modified: bool,
+    use_layers_modified: bool,
 ):
     # Configure hparams
     with open(HPARAMS_DIR / alg_name / hparams_fname, "r") as f:
@@ -64,6 +65,7 @@ def exec_sweep(
             num_edits=num_edits,
             use_cache=use_cache,
             use_modified=use_modified,
+            use_layers_modified=use_layers_modified,
         )
 
         # Clean up
@@ -132,6 +134,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable modified SAE-based behavior for compute_v/compute_z paths",
     )
+    parser.add_argument(
+        "--use_layers_modified",
+        action="store_true",
+        help="Use hparams.layers_modified instead of hparams.layers for layer selection",
+    )
 
     args = parser.parse_args()
     assert args.sweep_dir is not None, f"Must specify a sweep_dir."
@@ -167,4 +174,5 @@ if __name__ == "__main__":
             cur_num_edits,
             args.use_cache,
             args.use_modified,
+            args.use_layers_modified,
         )

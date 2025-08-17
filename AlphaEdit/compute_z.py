@@ -97,11 +97,13 @@ def compute_z(
     # Optional SAE-based modified behavior
     if use_modified:
         import torch.nn.functional as F
-        from rome.sae_paths import get_sae_path
+        from util.sae_paths import get_sae_path
         try:
             from dictionary_learning.utils import load_dictionary
         except Exception:
             load_dictionary = None
+        using_sae = True
+        print(f"Using SAE for modified behavior")
         device = (
             "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -133,6 +135,8 @@ def compute_z(
                     else:
                         cur_out[0][i, idx, :] += delta
             else:
+                print(f"Using SAE for modified behavior: {using_sae}")
+                print("Using modified behavior for output")
                 batch_size = len(lookup_idxs)
                 delta_features = sae_modified.encode(delta.unsqueeze(0)).expand(batch_size, -1)
 
@@ -211,23 +215,35 @@ def compute_z(
             torch.where(rewriting_targets != -100, rewriting_targets, 0).unsqueeze(2).to(log_probs.device),
         ).squeeze(2)
         mask = (rewriting_targets != -100).float()
-
-        # Aggregate total losses
         nll_loss_each = -(loss * mask.to(loss.device)).sum(1) / target_ids.size(0)
         nll_loss = nll_loss_each.mean()
-        kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
-            kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
-        )
-        weight_decay = hparams.v_weight_decay * (
-            torch.norm(delta) / torch.norm(target_init) ** 2
-        )
-        # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
-        loss = nll_loss + kl_loss.to(nll_loss.device) + weight_decay.to(nll_loss.device)
-        print(
-            f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
-            f"avg prob of [{request['target_new']['str']}] "
-            f"{torch.exp(-nll_loss_each).mean().item()}"
-        )
+        if not use_modified:
+            # Aggregate total losses
+            kl_loss = hparams.kl_factor * torch.nn.functional.kl_div(
+                kl_distr_init, kl_log_probs, log_target=True, reduction="batchmean"
+            )
+            weight_decay = hparams.v_weight_decay * (
+                torch.norm(delta) / torch.norm(target_init) ** 2
+            )
+            # weight_decay = hparams.v_weight_decay * torch.norm(delta) ** 2
+            loss = nll_loss + kl_loss.to(nll_loss.device) + weight_decay.to(nll_loss.device)
+            print(
+                f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
+                f"avg prob of [{request['target_new']['str']}] "
+                f"{torch.exp(-nll_loss_each).mean().item()}"
+            )
+        elif use_modified:
+            print("Using modified behavior for loss")
+            delta_features_for_loss = sae_modified.encode(delta.unsqueeze(0))
+            l1_loss = delta_features_for_loss.norm(p=1, dim=-1).mean()
+            alpha = float(getattr(hparams, "v_alpha", 0.0))
+            loss = nll_loss + alpha * l1_loss
+            print(
+                f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(l1_loss.item(), 3)} "
+                f"avg prob of [{request['target_new']}] "
+                f"{torch.exp(-nll_loss_each).mean().item()}"
+            )
+
         if loss < 5e-2:
             break
 

@@ -28,6 +28,7 @@ def apply_AlphaEdit_to_model(
     cache_c = None,
     P = None,
     use_modified: bool = False,
+    use_layers_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -47,15 +48,19 @@ def apply_AlphaEdit_to_model(
         )
 
     # Retrieve weights that user desires to change
+    # Use layers_modified if flag is set and it exists
+    layers = hparams.layers_modified if (use_layers_modified and hasattr(hparams, "layers_modified")) else hparams.layers
+    print(f"Using layers: {layers}")
+    print(f"layers_modified: {hparams.layers_modified}")
     weights = {
         f"{hparams.rewrite_module_tmp.format(layer)}.weight": nethook.get_parameter(
             model, f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         )
-        for layer in hparams.layers
+        for layer in layers
     }
     # Compute z for final layer
     context_templates = get_context_templates(model, tok)
-    z_layer = hparams.layers[-1]
+    z_layer = layers[-1]
     z_list = []
 
     for request in requests:
@@ -106,7 +111,7 @@ def apply_AlphaEdit_to_model(
                 print(f"Cached k/v pair at {cache_fname}")
     zs = torch.stack(z_list, dim=1)
 
-    for i, layer in enumerate(hparams.layers):
+    for i, layer in enumerate(layers):
         print(f"\n\nLAYER {layer}\n")
 
         # Get current model activations
@@ -128,7 +133,7 @@ def apply_AlphaEdit_to_model(
 
         repeat_factor = (layer_ks.size(1) // targets.size(1))
         targets = targets.repeat_interleave(repeat_factor, dim=1)
-        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers
+        resid = targets / (len(layers) - i)  # Distribute residual across layers
         upd_matrix = torch.linalg.solve(
                 P[i,:,:].cuda() @ (layer_ks @ layer_ks.T + cache_c[i,:,:].cuda()) + hparams.L2*torch.eye(layer_ks.shape[0], dtype=torch.float,device="cuda"), P[i,:,:].cuda() @ layer_ks @ resid.T
         )
@@ -145,7 +150,7 @@ def apply_AlphaEdit_to_model(
             x.cpu()
             del x
         torch.cuda.empty_cache()
-    for i, layer in enumerate(hparams.layers):
+    for i, layer in enumerate(layers):
         layer_ks = compute_ks(model, tok, requests, hparams, layer, context_templates).T
         cache_c[i,:,:] += layer_ks.cpu() @ layer_ks.cpu().T
 

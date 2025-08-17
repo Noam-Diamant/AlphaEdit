@@ -70,6 +70,7 @@ def main(
     num_edits: int = 1,
     use_cache: bool = False,
     use_modified: bool = False,
+    use_layers_modified: bool = False,
 ):
     # Set algorithm-specific variables
     params_class, apply_algo = ALG_DICT[alg_name]
@@ -246,7 +247,7 @@ def main(
         del W_out
     if alg_name == "AlphaEdit":
         for i, layer in enumerate(hparams.layers):
-            P[i,:,:] = get_project(model,tok,layer,hparams)
+            P[i,:,:] = get_project(model, tok, layer, hparams, use_layers_modified=use_layers_modified)
         torch.save(P, "null_space_project.pt")
     # hs = get_module_input_output_at_words(
     #         model,
@@ -287,6 +288,9 @@ def main(
         # propagate use_modified for algorithms that support it
         if alg_name in ["ROME", "AlphaEdit", "MEMIT", "MEMIT_prune", "MEMIT_seq", "NSE"]:
             etc_args.update(dict(use_modified=use_modified))
+            # Add layers_modified flag for algorithms that support it
+            if alg_name in ["ROME", "MEMIT", "AlphaEdit"]:
+                etc_args.update(dict(use_layers_modified=use_layers_modified))
         seq_args = dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]) else dict()
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit"]) else dict()
         if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
@@ -467,12 +471,20 @@ def main(
         #         nethook.get_parameter(model, k)[...] = v.to("cuda")
 
         print("Evaluation took", time() - start)
-def get_project(model, tok, layer, hparams):
+def get_project(model, tok, layer, hparams, use_layers_modified=False):
     force_recompute = False
+    # Use the correct layer based on use_layers_modified flag
+    target_layer = layer
+    if use_layers_modified and hasattr(hparams, "layers_modified"):
+        # Map the layer index to the corresponding modified layer
+        layer_idx = hparams.layers.index(layer)
+        if layer_idx < len(hparams.layers_modified):
+            target_layer = hparams.layers_modified[layer_idx]
+    
     cov = get_cov(
         model,
         tok,
-        hparams.rewrite_module_tmp.format(layer),
+        hparams.rewrite_module_tmp.format(target_layer),
         hparams.mom2_dataset,
         hparams.mom2_n_samples
         if not force_recompute
@@ -591,6 +603,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable modified SAE-based behavior for compute_v/compute_z paths",
     )
+    parser.add_argument(
+        "--use_layers_modified",
+        action="store_true",
+        help="Use hparams.layers_modified instead of hparams.layers for layer selection",
+    )
     args = parser.parse_args()
 
     main(
@@ -607,4 +624,5 @@ if __name__ == "__main__":
         num_edits=args.num_edits,
         use_cache=args.use_cache,
         use_modified=args.use_modified,
+        use_layers_modified=args.use_layers_modified,
     )

@@ -90,11 +90,12 @@ def compute_v(
     # Optional SAE-based modified behavior
     if use_modified:
         import torch.nn.functional as F
-        from rome.sae_paths import get_sae_path
+        from util.sae_paths import get_sae_path
         try:
             from dictionary_learning.utils import load_dictionary
         except Exception:
             load_dictionary = None
+        using_sae = True
         device = (
             "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
         )
@@ -125,6 +126,8 @@ def compute_v(
                     else:
                         cur_out[i, idx, :] += delta
             else:
+                print(f"Using SAE for modified behavior: {using_sae}")
+                print("Using modified behavior for output")
                 batch_size = len(lookup_idxs)
                 # Encode delta into feature space and broadcast to batch
                 delta_features = sae_modified.encode(delta.unsqueeze(0)).expand(batch_size, -1)
@@ -219,18 +222,24 @@ def compute_v(
         )
         # Add L1 sparsity term on delta features for modified mode
         if use_modified:
+            print("Using modified behavior for loss")
             # Reuse delta_features from last forward by re-encoding here safely
             delta_features_for_loss = sae_modified.encode(delta.unsqueeze(0))
-            l1_loss = delta_features_for_loss.norm(p=1)
+            l1_loss = delta_features_for_loss.norm(p=1, dim=-1).mean()
             alpha = float(getattr(hparams, "v_alpha", 0.0))
-            loss = nll_loss + weight_decay + alpha * l1_loss
+            loss = nll_loss + alpha * l1_loss
+            print(
+                f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(l1_loss.item(), 3)} "
+                f"avg prob of [{request['target_new']}] "
+                f"{torch.exp(-nll_loss_each).mean().item()}"
+            )
         else:
             loss = nll_loss + kl_loss + weight_decay
-        print(
-            f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
-            f"avg prob of [{request['target_new']}] "
-            f"{torch.exp(-nll_loss_each).mean().item()}"
-        )
+            print(
+                f"loss {np.round(loss.item(), 3)} = {np.round(nll_loss.item(), 3)} + {np.round(kl_loss.item(), 3)} + {np.round(weight_decay.item(), 3)} "
+                f"avg prob of [{request['target_new']}] "
+                f"{torch.exp(-nll_loss_each).mean().item()}"
+            )
         if loss < 5e-2:
             break
 

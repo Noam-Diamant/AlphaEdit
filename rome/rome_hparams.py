@@ -8,10 +8,13 @@ from util.hparams import HyperParams
 class ROMEHyperParams(HyperParams):
     KEYS = [
         "layers",
+        "layers_modified",
         "fact_token",
         "v_num_grad_steps",
         "v_lr",
         "v_loss_layer",
+        "v_alpha",
+        "v_division_factor",
         "v_weight_decay",
         "clamp_norm_factor",
         "kl_factor",
@@ -30,10 +33,13 @@ class ROMEHyperParams(HyperParams):
     ]
     # Method
     layers: List[int]
+    layers_modified: List[int]
     fact_token: str
     v_num_grad_steps: int
     v_lr: float
     v_loss_layer: int
+    v_alpha: float
+    v_division_factor: float
     v_weight_decay: float
     clamp_norm_factor: float
     kl_factor: float

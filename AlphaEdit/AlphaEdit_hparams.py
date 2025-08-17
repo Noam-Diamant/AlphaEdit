@@ -9,6 +9,7 @@ class AlphaEditHyperParams(HyperParams):
     # Method
     model_name: str
     layers: List[int]
+    layers_modified: List[int]
     layer_selection: Literal["all", "random"]
     fact_token: Literal[
         "last", "subject_first", "subject_last", "subject_first_after_last"
@@ -17,6 +18,8 @@ class AlphaEditHyperParams(HyperParams):
     v_lr: float
     v_loss_layer: int
     v_weight_decay: float
+    v_alpha: float
+    v_division_factor: float
     clamp_norm_factor: float
     kl_factor: float
     mom2_adjustment: bool

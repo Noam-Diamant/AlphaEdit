@@ -30,6 +30,7 @@ def apply_memit_to_model(
     return_orig_weights=False,
     cache_template: Optional[str] = None,
     use_modified: bool = False,
+    use_layers_modified: bool = False,
 ) -> Tuple[AutoModelForCausalLM, Dict[str, Any]]:
     """
     Returns a model with the desired changes.
@@ -43,7 +44,7 @@ def apply_memit_to_model(
         model = deepcopy(model)
 
     deltas = execute_memit(
-        model, tok, requests, hparams, cache_template=cache_template, use_modified=use_modified
+        model, tok, requests, hparams, cache_template=cache_template, use_modified=use_modified, use_layers_modified=use_layers_modified
     )
 
     with torch.no_grad():
@@ -70,6 +71,7 @@ def execute_memit(
     hparams: MEMITHyperParams,
     cache_template: Optional[str] = None,
     use_modified: bool = False,
+    use_layers_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -91,18 +93,22 @@ def execute_memit(
         )
 
     # Retrieve weights that user desires to change
+    # Use layers_modified if flag is set and it exists
+    layers = hparams.layers_modified if (use_layers_modified and hasattr(hparams, "layers_modified")) else hparams.layers
+    print(f"Using layers: {layers}")
+    print(f"Using use_layers_modified: {use_layers_modified}")
     weights = {
         f"{hparams.rewrite_module_tmp.format(layer)}.weight": nethook.get_parameter(
             model, f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         )
-        for layer in hparams.layers
+        for layer in layers
     }
     # Save old weights for future restoration
     weights_copy = {k: v.detach().clone() for k, v in weights.items()}
 
     # Compute z for final layer
     context_templates = get_context_templates(model, tok)
-    z_layer = hparams.layers[-1]
+    z_layer = layers[-1]
     z_list = []
 
     for request in requests:
@@ -154,7 +160,7 @@ def execute_memit(
     zs = torch.stack(z_list, dim=1)
 
     # Insert
-    for i, layer in enumerate(hparams.layers):
+    for i, layer in enumerate(layers):
         print(f"\n\nLAYER {layer}\n")
 
         # Get current model activations
@@ -202,7 +208,7 @@ def execute_memit(
             hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T,
             layer_ks,
         )
-        resid = targets / (len(hparams.layers) - i)  # Distribute residual across layers
+        resid = targets / (len(layers) - i)  # Distribute residual across layers
         upd_matrix = resid @ adj_k.T
 
         # Adjust update matrix shape

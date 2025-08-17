@@ -25,6 +25,7 @@ def apply_rome_to_model(
     return_orig_weights=False,
     keep_original_weight=False,
     use_modified: bool = False,
+    use_layers_modified: bool = False,
     **kwargs
 ) -> Tuple[AutoModelForCausalLM, List[str]]:
     """
@@ -41,7 +42,7 @@ def apply_rome_to_model(
 
     weights_copy = {}
 
-    deltas = execute_rome(model, tok, request, hparams, use_modified=use_modified)
+    deltas = execute_rome(model, tok, request, hparams, use_layers_modified=use_layers_modified, use_modified=use_modified)
 
     with torch.no_grad():
         for w_name, (delta_u, delta_v) in deltas.items():
@@ -64,6 +65,7 @@ def execute_rome(
     tok: AutoTokenizer,
     request: Dict,
     hparams: ROMEHyperParams,
+    use_layers_modified: bool = False,
     use_modified: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
@@ -89,18 +91,24 @@ def execute_rome(
     )
 
     # Retrieve weights that user desires to change
+    # Use layers_modified if flag is set and it exists
+    layers = hparams.layers_modified if (use_layers_modified and hasattr(hparams, "layers_modified")) else hparams.layers
+    print(f"use_layers_modified: {use_layers_modified}")
+    print(f"hparams.layers_modified: {hparams.layers_modified}")
+
+    print(f"Using layers: {layers}")
     weights = {
         f"{hparams.rewrite_module_tmp.format(layer)}.weight": nethook.get_parameter(
             model, f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         )
-        for layer in hparams.layers
+        for layer in layers
     }
     # Save old weights for future restoration
     weights_copy = {k: v.detach().clone() for k, v in weights.items()}
 
     # Update loop: sequentially intervene at each specified layer
     deltas = {}
-    for layer in sorted(hparams.layers):
+    for layer in sorted(layers):
         # Compute rank-1 update matrix
         left_vector: torch.Tensor = compute_u(
             model,
