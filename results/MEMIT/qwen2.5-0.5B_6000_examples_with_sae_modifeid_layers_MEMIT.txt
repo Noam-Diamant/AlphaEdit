@@ -1,0 +1,18 @@
+{'run_dir': 'results/MEMIT/run_004', 'num_cases': 6000}
+{'num_cases': 6000,
+ 'post_essence_score': (np.float64(22259471.970588237),
+                        np.float64(6528405.990170804)),
+ 'post_neighborhood_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_neighborhood_diff': (np.float64(0.0), np.float64(0.01)),
+ 'post_neighborhood_success': (np.float64(49.49), np.float64(42.12)),
+ 'post_ngram_entropy': (np.float64(447.5), np.float64(6.83)),
+ 'post_paraphrase_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_paraphrase_diff': (np.float64(-0.0), np.float64(0.01)),
+ 'post_paraphrase_success': (np.float64(50.18), np.float64(43.38)),
+ 'post_reference_score': (np.float64(2.14), np.float64(1.62)),
+ 'post_rewrite_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_rewrite_diff': (np.float64(0.0), np.float64(0.01)),
+ 'post_rewrite_success': (np.float64(50.28), np.float64(50.0)),
+ 'post_score': (np.float64(49.980853817381345), nan),
+ 'run_dir': 'results/MEMIT/run_004',
+ 'time': (np.float64(5.334425449371338), np.float64(0.0))}

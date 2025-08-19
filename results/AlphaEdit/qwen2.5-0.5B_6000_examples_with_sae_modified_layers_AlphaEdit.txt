@@ -1,0 +1,18 @@
+{'run_dir': 'results/AlphaEdit/run_008', 'num_cases': 6000}
+{'num_cases': 6000,
+ 'post_essence_score': (np.float64(14067498.13235294),
+                        np.float64(5274488.566188353)),
+ 'post_neighborhood_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_neighborhood_diff': (np.float64(-0.0), np.float64(0.0)),
+ 'post_neighborhood_success': (np.float64(49.92), np.float64(27.0)),
+ 'post_ngram_entropy': (np.float64(346.19), np.float64(25.16)),
+ 'post_paraphrase_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_paraphrase_diff': (np.float64(-0.0), np.float64(0.0)),
+ 'post_paraphrase_success': (np.float64(49.65), np.float64(38.87)),
+ 'post_reference_score': (np.float64(3.25), np.float64(2.55)),
+ 'post_rewrite_acc': (np.float64(0.0), np.float64(0.0)),
+ 'post_rewrite_diff': (np.float64(-0.0), np.float64(0.0)),
+ 'post_rewrite_success': (np.float64(50.42), np.float64(50.0)),
+ 'post_score': (np.float64(49.99463587964199), nan),
+ 'run_dir': 'results/AlphaEdit/run_008',
+ 'time': (np.float64(4.712085962295532), np.float64(0.0))}

@@ -1,0 +1,18 @@
+{'run_dir': 'results/ROME/run_008', 'num_cases': 6000}
+{'num_cases': 6000,
+ 'post_essence_score': (np.float64(1240687.390625),
+                        np.float64(904115.7504540982)),
+ 'post_neighborhood_acc': (np.float64(0.0), np.float64(0.18)),
+ 'post_neighborhood_diff': (np.float64(0.0), np.float64(0.08)),
+ 'post_neighborhood_success': (np.float64(49.75), np.float64(32.03)),
+ 'post_ngram_entropy': (np.float64(546.88), np.float64(8.99)),
+ 'post_paraphrase_acc': (np.float64(0.02), np.float64(0.91)),
+ 'post_paraphrase_diff': (np.float64(0.01), np.float64(0.77)),
+ 'post_paraphrase_success': (np.float64(50.28), np.float64(40.74)),
+ 'post_reference_score': (np.float64(2.18), np.float64(1.49)),
+ 'post_rewrite_acc': (np.float64(0.02), np.float64(1.29)),
+ 'post_rewrite_diff': (np.float64(-0.0), np.float64(1.31)),
+ 'post_rewrite_success': (np.float64(51.03), np.float64(49.99)),
+ 'post_score': (np.float64(50.34786843303388), nan),
+ 'run_dir': 'results/ROME/run_008',
+ 'time': (np.float64(4.528465270996094), np.float64(0.0))}
