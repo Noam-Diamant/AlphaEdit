@@ -96,16 +96,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--alg_name", choices=["MEMIT", "FT", "ROME", "MEND"], required=True
+        "--alg_name", choices=["MEMIT", "FT", "ROME", "MEND","AlphaEdit"], required=True
     )
     parser.add_argument(
-        "--model_name", choices=["gpt2-xl", "EleutherAI/gpt-j-6B"], required=True
+        "--model_name", choices=["gpt2-xl", "EleutherAI/gpt-j-6B", "Qwen/Qwen2.5-0.5B"], required=True
     )
     parser.add_argument("--hparams_fname", type=str, required=True)
     parser.add_argument(
         "--ds_name",
         choices=["mcf", "cf", "zsre"],
-        default="mcf",
+        default="cf",
         help="Dataset to perform evaluations on. Either CounterFact (cf), MultiCounterFact (mcf), or zsRE (zsre).",
     )
     parser.add_argument("--min_records", type=int, default=None)
