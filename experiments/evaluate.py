@@ -71,6 +71,7 @@ def main(
     use_cache: bool = False,
     use_modified: bool = False,
     use_layers_modified: bool = False,
+    downstream_eval_steps: int = 0,
 ):
     # Set algorithm-specific variables
     params_class, apply_algo = ALG_DICT[alg_name]
@@ -293,7 +294,7 @@ def main(
                 etc_args.update(dict(use_layers_modified=use_layers_modified))
         seq_args = dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]) else dict()
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit"]) else dict()
-        if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
+        if cnt == 0 and downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
             glue_results = {'edit_num': -1}
 
             out_file = glue_save_location + "base.json"
@@ -412,7 +413,7 @@ def main(
         print("Execution took", exec_time)
         # Evaluate new model
     
-        if args.downstream_eval_steps > 0 and cnt % args.downstream_eval_steps == 0:
+        if downstream_eval_steps > 0 and cnt % downstream_eval_steps == 0:
             glue_results = {
                         'edit_num': cnt*num_edits,
                         'case_id': case_ids

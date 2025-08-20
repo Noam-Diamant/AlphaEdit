@@ -26,6 +26,7 @@ def exec_sweep(
     use_cache: bool,
     use_modified: bool,
     use_layers_modified: bool,
+    downstream_eval_steps: int = 0,
 ):
     # Configure hparams
     with open(HPARAMS_DIR / alg_name / hparams_fname, "r") as f:
@@ -66,6 +67,7 @@ def exec_sweep(
             use_cache=use_cache,
             use_modified=use_modified,
             use_layers_modified=use_layers_modified,
+            downstream_eval_steps=downstream_eval_steps,
         )
 
         # Clean up
@@ -139,6 +141,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Use hparams.layers_modified instead of hparams.layers for layer selection",
     )
+    parser.add_argument(
+        "--downstream_eval_steps",
+        type=int,
+        default=0,
+        help="If we want to do sequential editing or not",
+    )
 
     args = parser.parse_args()
     assert args.sweep_dir is not None, f"Must specify a sweep_dir."
@@ -175,4 +183,5 @@ if __name__ == "__main__":
             args.use_cache,
             args.use_modified,
             args.use_layers_modified,
+            args.downstream_eval_steps,
         )
