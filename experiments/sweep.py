@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
         num_records = (
             None if args.max_records is None
-            else min(args.max_records, cur_num_edits)
+            else args.max_records#min(args.max_records, cur_num_edits)
         )
         if args.min_records is not None:
             num_records = max(args.min_records, cur_num_edits)
